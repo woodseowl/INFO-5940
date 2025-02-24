@@ -72,6 +72,21 @@ git checkout assignment-1
 
 ---
 
+## ✅ Assignment Tasks
+
+1. Utilize the Provided Docker and Devcontainer Setup
+  - [x] **Task 1:** Use the provided template with Docker ­­and .devcontainer configurations for your application development.
+  - [x] **Task 2:** Ensure your application runs successfully within this environment.
+
+2. File Upload Functionality for .txt Files
+  - [x] **Task 1:** A user interface component that enables file selection and uploading.
+  - [x] **Task 2:** Backend handling of multiple uploaded .txt files.
+  - [ ] **Bonus idea** Management of uploaded files.
+
+3. Conversational Interface with Document Content
+  - [ ] **Task 1:** Implement a conversational interface with the uploaded document content.
+  - [ ] **Task 2:** Efficiently handle large documents by chunking them into smaller, manageable pieces.
+
 ## 🏃 Running Jupyter Notebook From Outside VS Code
 
 Once inside the **VS Code Dev Container**, you should be able to run the notebooks from the IDE but you can also launch the Jupyter Notebook server:  

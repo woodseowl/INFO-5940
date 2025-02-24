@@ -3,7 +3,7 @@ from openai import OpenAI
 from os import environ
 
 st.title("Share Your Thoughts with a Chatbot")
-st.caption("INFO-5940, Assignment 1 - Eric Woods (elw234)")
+st.caption("INFO-5940, Assignment 1, part 1 - Eric Woods (elw234)")
 
 if "messages" not in st.session_state:
     st.session_state["messages"] = [{"role": "assistant", "content": "Hello! How can I help you today?"}]
