@@ -62,6 +62,16 @@ git checkout assignment-1
 
 ---
 
+### 4️⃣ Confirm the configuration with a simple chat
+
+1. Open a terminal in VS Code and run:  
+
+   ```bash
+   streamlit run chat_with_me.py
+   ```
+
+---
+
 ## 🏃 Running Jupyter Notebook From Outside VS Code
 
 Once inside the **VS Code Dev Container**, you should be able to run the notebooks from the IDE but you can also launch the Jupyter Notebook server:  
@@ -72,7 +82,7 @@ jupyter notebook --ip 0.0.0.0 --port=8888 --no-browser --allow-root
 
 ---
 
-### 5️⃣ Access Jupyter Notebook  
+### Access Jupyter Notebook  
 
 When the notebook starts, it will output a URL like this:  
 
