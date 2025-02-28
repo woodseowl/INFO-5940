@@ -84,52 +84,6 @@ git checkout assignment-1
 
 3. Conversational Interface with Document Content
   - [x] **Task 1:** Implement a conversational interface with the uploaded document content. (See upload_chat.py)
-  - [x] **Task 2:** Efficiently handle large documents by chunking them into smaller, manageable pieces.
+  - [x] **Task 2:** Efficiently handle large documents by chunking them into smaller, manageable pieces. (See upload_chunk_chat.py)
 
-## 🏃 Running Jupyter Notebook From Outside VS Code
-
-Once inside the **VS Code Dev Container**, you should be able to run the notebooks from the IDE but you can also launch the Jupyter Notebook server:  
-
-```bash
-jupyter notebook --ip 0.0.0.0 --port=8888 --no-browser --allow-root
-```
-
----
-
-### Access Jupyter Notebook  
-
-When the notebook starts, it will output a URL like this:  
-
-```
-http://127.0.0.1:8888/?token=your_token_here
-```
-
-Copy and paste this link into your browser to access the Jupyter Notebook interface.  
-
----
-
-## 🛠️ Troubleshooting  
-
-### **Container Fails to Start?**  
-- Ensure **Docker Desktop is running**.  
-- Run `docker-compose up --build` again.  
-- If errors persist, delete existing containers with:  
-
-  ```bash
-  docker-compose down
-  ```
-
-  Then restart:  
-
-  ```bash
-  docker-compose up --build
-  ```
-
-### **Cannot Access Jupyter Notebook from outside VS Code?**  
-- Ensure you’re using the correct port (`8888`).  
-- Run `docker ps` to check if the container is running.  
-
-### **OpenAI API Key Not Recognized?**  
-- Check if `.env` is correctly created.  
-- Ensure `docker-compose.yml` includes `env_file: - .env`.  
-- Restart the container after making changes (`docker-compose up --build`).  
+  

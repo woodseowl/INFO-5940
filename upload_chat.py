@@ -9,7 +9,7 @@ client = OpenAI(api_key=environ['OPENAI_API_KEY'])
 model = "openai.gpt-4o-mini"
 
 st.title("File Upload")
-st.caption("INFO-5940, Assignment 1, part 2 - Eric Woods (elw234)")
+st.caption("INFO-5940, Assignment 1, part 3 - Eric Woods (elw234)")
 
 st.chat_message("assistant").write("Hello! Please upload a .txt file to begin.")
 
