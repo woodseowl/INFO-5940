@@ -4,13 +4,37 @@ from millify import millify
 from pypdf import PdfReader
 
 ### Local utilities
-from ai_utilities import count_tokens, stream_context_chat
+from ai_utilities import count_tokens, stream_context_chat, generate_embeddings, count_embeddings, get_total_embeddings, \
+    reset_embeddings
 
 ### Setup
 supported_file_types = ('.txt', '.pdf', '.md')
 text_file_types = ('.txt', '.md')
 storage_path = "/workspace/data/uploaded_files"
 os.makedirs(storage_path, exist_ok=True)
+
+default_max_tokens = 50000
+default_chunk_size = 1000
+default_query_embeddings = False
+
+#########################
+# Settings helpers
+#########################
+
+def get_max_tokens():
+    if "max_tokens" not in st.session_state:
+        return default_max_tokens
+    return st.session_state.max_tokens
+
+def get_chunk_size():
+    if "chunk_size" not in st.session_state:
+        return default_chunk_size
+    return st.session_state.chunk_size
+
+def get_query_embeddings():
+    if "query_embeddings" not in st.session_state:
+        return default_query_embeddings
+    return st.session_state.query_embeddings
 
 #########################
 # File Uploader
@@ -35,9 +59,10 @@ def load_file_list():
             "path": file_path,
             "ext": file_path.split('.')[-1],
             "size": os.path.getsize(file_path),
+            "last_modified": os.path.getmtime(file_path)
         }
         metadata["tokens"] = count_tokens(get_file_content(metadata))
-        #metadata["embeddings"] = count_embeddings(metadata)
+        metadata["embeddings"] = count_embeddings(metadata)
         file_list.append(metadata)
     return file_list
 
@@ -65,16 +90,16 @@ def get_selected_file_list():
             selected_files.append(file)
     return selected_files
 
-def get_file_content(metadata):
-    match metadata["ext"]:
+def get_file_content(file):
+    match file["ext"]:
         case "pdf":
-            with open(metadata["path"], "rb") as f:
+            with open(file["path"], "rb") as f:
                 pdf_reader = PdfReader(f)
                 content = ""
                 for page in pdf_reader.pages:
                     content += page.extract_text()
         case _:
-            with open(metadata["path"], "r", encoding="utf-8") as f:
+            with open(file["path"], "r", encoding="utf-8") as f:
                 content = f.read()
     return content
 
@@ -93,17 +118,24 @@ def file_uploader_callback():
 def remove_files_callback():
     for file in get_selected_file_list():
         os.remove(file["path"])
-    # Refresh the file list
     refresh_file_list()
 
-def process_files_callback():
-    # process_documents(get_selected_file_list(), selected_chunk_size)
-    return
+def generate_embeddings_callback():
+    for file in get_selected_file_list():
+        generate_embeddings(file, get_chunk_size())
+    refresh_file_list()
+
+def reset_all():
+    for file in get_file_list():
+        os.remove(file["path"])
+    reset_embeddings()
+    refresh_file_list()
 
 
 #########################
 # Chat Helpers
 #########################
+
 def chat_started():
     return "messages" in st.session_state and len(st.session_state.messages) > 0
 
@@ -123,19 +155,15 @@ def add_chat_message(role, content):
 def clear_chat():
     st.session_state.messages = []
 
-def get_max_tokens():
-    if "max_tokens" not in st.session_state:
-        return 0
-    return st.session_state.max_tokens
-
 def stream_ai_response():
     context = ""
-    for metadata in selected_files:
-        content = get_file_content(metadata)
-        context += f"### {metadata['name']}\n\n{content}\n\n"
+    for file in selected_files:
+        content = get_file_content(file)
+        context += f"### {file['name']}\n\n{content}\n\n"
 
     return stream_context_chat(get_chat_history(), context)
-    
+
+
 #########################
 # Page Layout
 #########################
@@ -178,8 +206,12 @@ with left:
                        f"which is more than the maximum of {millify(max_tokens, precision=1)} tokens. "
                        f"Please deselect some files or increase the number of tokens to send to AI.")
 
-        st.write(f"Max tokens: {millify(max_tokens, precision=1)}")
-        if prompt := st.chat_input("Ask a question about the files in use."):
+        st.write(
+            f"Max tokens: {millify(max_tokens, precision=1)}, "
+            f"Query embeddings: {get_query_embeddings()}"
+        )
+
+        if prompt := st.chat_input("Ask a question about the selected files in use..."):
             add_chat_message("user", prompt)
             with chat_box.chat_message("user"):
                 st.write(prompt)
@@ -204,11 +236,12 @@ with right:
     #########################
     ### File Uploader
     #########################
-    st.subheader("Files in Use")
+    st.subheader("📂 Files in Use")
     if current_files:
         for file in current_files:
+            embeddings = f", {file['embeddings']} embeddings" if file['embeddings'] else ""
             st.checkbox(
-                f'{file["name"]} ({millify(file["tokens"], precision=1)} tokens)', 
+                f'{file["name"]} ({millify(file["tokens"], precision=1)} tokens{embeddings})',
                 key=f"file_checkbox_{file['path']}"
             )
     else:
@@ -225,19 +258,24 @@ with right:
 
     # If there are files in use, show a button to clear files
     if get_file_list():
-        button1, button2 = st.columns([1, 1])
+        button1, button2, button3 = st.columns([5, 4, 4])
         selected_files = get_selected_file_list()
         button1.button(
             f"Generate Embeddings",
             icon="🔍",
-            on_click=lambda: process_files_callback(),
-            disabled=True #not bool(selected_files)
+            on_click=lambda: generate_embeddings_callback(),
+            disabled=not bool(selected_files)
         )
         button2.button(
             f"Remove {len(selected_files)} Files", 
             icon="❌",
             on_click=lambda: remove_files_callback(),
             disabled=not bool(selected_files)
+        )
+        button3.button(
+            "Reset All",
+            icon="🔄",
+            on_click=lambda: reset_all(),
         )
 
     st.divider()
@@ -252,11 +290,16 @@ with right:
             value=len(get_file_list()),
             border=True
         )
-
     with col2:
         st.metric(
             label="Tokens",
             value=millify(sum([file["tokens"] for file in get_file_list()]), precision=1),
+            border=True
+        )
+    with col3:
+        st.metric(
+            label="Embeddings",
+            value=get_total_embeddings(),
             border=True
         )
 
@@ -272,8 +315,25 @@ with right:
             "Max tokens to send to AI",
             min_value=1000,
             max_value=100000,
-            value=10000,
+            value=default_max_tokens,
             step=1000,
             format="%d",
             key="max_tokens",
+        )
+    with settings2:
+        st.slider(
+            "Chunk size for embeddings",
+            min_value=100,
+            max_value=2000,
+            value=default_chunk_size,
+            step=100,
+            format="%d",
+            key="chunk_size",
+        )
+    settings3, settings4 = st.columns(2)
+    with settings3:
+        st.toggle(
+            "Query embeddings",
+            value=default_query_embeddings,
+            key="query_embeddings"
         )
