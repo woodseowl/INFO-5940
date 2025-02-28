@@ -4,7 +4,7 @@ from millify import millify
 from pypdf import PdfReader
 
 ### Local utilities
-from ai_utilities import count_tokens, stream_context_chat
+from ai_utilities import count_tokens, retrieve_context_chat
 
 ### Setup
 supported_file_types = ('.txt', '.pdf', '.md')
@@ -134,7 +134,7 @@ def stream_ai_response():
         content = get_file_content(metadata)
         context += f"### {metadata['name']}\n\n{content}\n\n"
 
-    return stream_context_chat(get_chat_history(), context)
+    return retrieve_context_chat(get_chat_history(), context)
     
 #########################
 # Page Layout

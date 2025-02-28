@@ -4,8 +4,7 @@ from millify import millify
 from pypdf import PdfReader
 
 ### Local utilities
-from ai_utilities import count_tokens, stream_context_chat, generate_embeddings, count_embeddings, get_total_embeddings, \
-    reset_embeddings
+import ai_utilities
 
 ### Setup
 supported_file_types = ('.txt', '.pdf', '.md')
@@ -14,27 +13,39 @@ storage_path = "/workspace/data/uploaded_files"
 os.makedirs(storage_path, exist_ok=True)
 
 default_max_tokens = 50000
-default_chunk_size = 1000
+default_chunk_size = 100
+default_chunk_overlap = 20
 default_query_embeddings = False
+default_query_k = 5
 
 #########################
 # Settings helpers
 #########################
 
-def get_max_tokens():
+def get_setting_max_tokens():
     if "max_tokens" not in st.session_state:
         return default_max_tokens
     return st.session_state.max_tokens
 
-def get_chunk_size():
+def get_setting_chunk_size():
     if "chunk_size" not in st.session_state:
         return default_chunk_size
     return st.session_state.chunk_size
 
-def get_query_embeddings():
+def get_setting_chunk_overlap():
+    if "chunk_overlap" not in st.session_state:
+        return default_chunk_overlap
+    return st.session_state.chunk_overlap
+
+def get_setting_query_embeddings():
     if "query_embeddings" not in st.session_state:
         return default_query_embeddings
     return st.session_state.query_embeddings
+
+def get_setting_query_k():
+    if "query_k" not in st.session_state:
+        return default_query_k
+    return st.session_state.query_k
 
 #########################
 # File Uploader
@@ -61,13 +72,14 @@ def load_file_list():
             "size": os.path.getsize(file_path),
             "last_modified": os.path.getmtime(file_path)
         }
-        metadata["tokens"] = count_tokens(get_file_content(metadata))
-        metadata["embeddings"] = count_embeddings(metadata)
+        metadata["tokens"] = ai_utilities.count_tokens(get_file_content(metadata))
+        metadata["embeddings"] = ai_utilities.count_embeddings(metadata)
         file_list.append(metadata)
     return file_list
 
 def refresh_file_list():
     st.session_state.file_list = load_file_list()
+    get_total_embeddings(reset=True)
 
 def get_file_list():    
     if 'file_list' not in st.session_state:
@@ -79,14 +91,14 @@ def display_files_in_use(placeholder):
     with placeholder.container():
         if current_files:
             for file in current_files:
-                st.checkbox(file["name"], key=f"file_checkbox_{file['path']}")
+                st.checkbox(file["name"], key=f"file_checkbox_{file['name']}")
         else:
             st.write("No files in directory.")
 
 def get_selected_file_list():
     selected_files = []
     for file in get_file_list():
-        if st.session_state.get(f"file_checkbox_{file['path']}", False):
+        if st.session_state.get(f"file_checkbox_{file['name']}", False):
             selected_files.append(file)
     return selected_files
 
@@ -105,9 +117,7 @@ def get_file_content(file):
 
 def file_uploader_callback():
     uploaded_files = st.session_state[f"file_uploader_{st.session_state.uploader_key}"]
-    # Handle the uploaded files
     for uploaded_file in uploaded_files:
-        # Save the file to the storage directory
         file_path = os.path.join(storage_path, uploaded_file.name)
         with open(file_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
@@ -118,17 +128,27 @@ def file_uploader_callback():
 def remove_files_callback():
     for file in get_selected_file_list():
         os.remove(file["path"])
+        ai_utilities.remove_embeddings(file)
     refresh_file_list()
 
 def generate_embeddings_callback():
     for file in get_selected_file_list():
-        generate_embeddings(file, get_chunk_size())
+        ai_utilities.generate_embeddings(file, get_setting_chunk_size(), get_setting_chunk_overlap())
     refresh_file_list()
 
-def reset_all():
+def get_total_embeddings(reset=False):
+    if reset or "count_embeddings" not in st.session_state:
+        st.session_state.count_embeddings = ai_utilities.count_embeddings()
+    return st.session_state.count_embeddings
+
+def reset_embeddings_callback():
+    ai_utilities.remove_embeddings()
+    refresh_file_list()
+
+def reset_all_callback():
     for file in get_file_list():
         os.remove(file["path"])
-    reset_embeddings()
+    ai_utilities.remove_embeddings()
     refresh_file_list()
 
 
@@ -155,14 +175,18 @@ def add_chat_message(role, content):
 def clear_chat():
     st.session_state.messages = []
 
-def stream_ai_response():
+def stream_content_chat():
     context = ""
-    for file in selected_files:
+    for file in get_selected_file_list():
         content = get_file_content(file)
         context += f"### {file['name']}\n\n{content}\n\n"
+    return ai_utilities.retrieve_context_chat(get_chat_history(), context)
 
-    return stream_context_chat(get_chat_history(), context)
+def stream_embeddings_chat(prompt):
+    return ai_utilities.retrieve_embeddings_chat(prompt, get_chat_history(), selected_files, get_setting_query_k())
 
+def get_rag_chat_response(prompt):
+    return ai_utilities.retrieve_rag_chain_result(prompt, get_setting_query_k())
 
 #########################
 # Page Layout
@@ -200,7 +224,7 @@ with left:
                    f"You have selected {len(selected_files)} of them, "
                    f"for a total of {millify(tokens, precision=1)} tokens.")
 
-        max_tokens = get_max_tokens()
+        max_tokens = get_setting_max_tokens()
         if tokens > max_tokens:
             st.warning(f"Your selected files contain {millify(tokens, precision=1)} tokens, "
                        f"which is more than the maximum of {millify(max_tokens, precision=1)} tokens. "
@@ -208,7 +232,7 @@ with left:
 
         st.write(
             f"Max tokens: {millify(max_tokens, precision=1)}, "
-            f"Query embeddings: {get_query_embeddings()}"
+            f"Query embeddings: {get_setting_query_embeddings()}"
         )
 
         if prompt := st.chat_input("Ask a question about the selected files in use..."):
@@ -221,7 +245,12 @@ with left:
                     response = "Please select some files to use."
                     st.write(response)
                 else:
-                    response = st.write_stream(stream_ai_response())
+                    if get_setting_query_embeddings():
+                        response = get_rag_chat_response(prompt)
+                        st.write(response)
+                        # response = st.write_stream(stream_embeddings_chat(prompt))
+                    else:
+                        response = st.write_stream(stream_content_chat())
             add_chat_message("assistant", response)
 
     if current_files: st.button(
@@ -230,7 +259,6 @@ with left:
         on_click=lambda: clear_chat(),
         disabled=not chat_started()
     )
-
 
 with right:
     #########################
@@ -242,7 +270,8 @@ with right:
             embeddings = f", {file['embeddings']} embeddings" if file['embeddings'] else ""
             st.checkbox(
                 f'{file["name"]} ({millify(file["tokens"], precision=1)} tokens{embeddings})',
-                key=f"file_checkbox_{file['path']}"
+                value=True,
+                key=f"file_checkbox_{file['name']}"
             )
     else:
         st.write("No files in directory.")
@@ -272,11 +301,17 @@ with right:
             on_click=lambda: remove_files_callback(),
             disabled=not bool(selected_files)
         )
-        button3.button(
-            "Reset All",
-            icon="🔄",
-            on_click=lambda: reset_all(),
-        )
+        with button3:
+            st.button(
+                " Embeddings",
+                icon="🔄",
+                on_click=lambda: reset_embeddings_callback(),
+            )
+            st.button(
+                "Reset All",
+                icon="🔄",
+                on_click=lambda: reset_all_callback(),
+            )
 
     st.divider()
     
@@ -309,8 +344,29 @@ with right:
     st.divider()
     st.subheader("️⚙️ Settings")
 
+    settings3, settings4 = st.columns(2)
     settings1, settings2 = st.columns(2)
     with settings1:
+        st.slider(
+            "Chunk size for embeddings",
+            min_value=50,
+            max_value=1000,
+            value=default_chunk_size,
+            step=10,
+            format="%d",
+            key="chunk_size",
+        )
+    with settings2:
+        st.slider(
+            "Chunk overlap for embeddings",
+            min_value=0,
+            max_value=100,
+            value=default_chunk_overlap,
+            step=10,
+            format="%d",
+            key="chunk_overlap",
+        )
+    with settings3:
         st.slider(
             "Max tokens to send to AI",
             min_value=1000,
@@ -320,20 +376,19 @@ with right:
             format="%d",
             key="max_tokens",
         )
-    with settings2:
-        st.slider(
-            "Chunk size for embeddings",
-            min_value=100,
-            max_value=2000,
-            value=default_chunk_size,
-            step=100,
-            format="%d",
-            key="chunk_size",
-        )
-    settings3, settings4 = st.columns(2)
-    with settings3:
+    with settings4:
         st.toggle(
             "Query embeddings",
             value=default_query_embeddings,
             key="query_embeddings"
+        )
+        st.slider(
+            "Query k",
+            min_value=1,
+            max_value=20,
+            value=default_query_k,
+            step=1,
+            format="%d",
+            key="query_k",
+            disabled=not get_setting_query_embeddings()
         )
