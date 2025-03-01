@@ -43,12 +43,12 @@ def retrieve_embeddings_chat(prompt, chat_messages, files, k=default_k):
         search_type="similarity",
         search_kwargs={
             "k": k,
-            "where": {"source": files[0]["path"]},
+           #"where": {"source": files[0]["path"]},
         })
 
     # Find the most relevant documents by determining the metadata sources from the retriever
     results = retriever.invoke(prompt)
-    print(*results)
+    #print(*results)
 
     source_files = [doc.metadata["source"] for doc in results]
 

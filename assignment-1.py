@@ -13,9 +13,9 @@ storage_path = "/workspace/data/uploaded_files"
 os.makedirs(storage_path, exist_ok=True)
 
 default_max_tokens = 50000
-default_chunk_size = 100
+default_chunk_size = 200
 default_chunk_overlap = 20
-default_query_embeddings = False
+default_query_embeddings = True
 default_query_k = 5
 
 #########################
@@ -121,6 +121,13 @@ def file_uploader_callback():
         file_path = os.path.join(storage_path, uploaded_file.name)
         with open(file_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
+        file = {
+            "name": uploaded_file.name,
+            "path": file_path,
+            "ext": file_path.split('.')[-1],
+        }
+        ai_utilities.generate_embeddings(file, get_setting_chunk_size(), get_setting_chunk_overlap())
+
     # Clear the file uploader + refresh the file list
     st.session_state.uploader_key += 1
     refresh_file_list()
@@ -182,6 +189,7 @@ def stream_content_chat():
         context += f"### {file['name']}\n\n{content}\n\n"
     return ai_utilities.retrieve_context_chat(get_chat_history(), context)
 
+# NOT IN USE
 def stream_embeddings_chat(prompt):
     return ai_utilities.retrieve_embeddings_chat(prompt, get_chat_history(), selected_files, get_setting_query_k())
 
@@ -193,7 +201,8 @@ def get_rag_chat_response(prompt):
 #########################
 
 st.set_page_config(layout="wide")
-st.title("File Uploader Example")
+st.title("RAG Application")
+st.caption("INFO-5940, Assignment 1 - Eric Woods (elw234)")
 
 current_files = get_file_list()
 selected_files = get_selected_file_list()
@@ -225,7 +234,7 @@ with left:
                    f"for a total of {millify(tokens, precision=1)} tokens.")
 
         max_tokens = get_setting_max_tokens()
-        if tokens > max_tokens:
+        if not get_setting_query_embeddings() and tokens > max_tokens:
             st.warning(f"Your selected files contain {millify(tokens, precision=1)} tokens, "
                        f"which is more than the maximum of {millify(max_tokens, precision=1)} tokens. "
                        f"Please deselect some files or increase the number of tokens to send to AI.")
@@ -285,39 +294,10 @@ with right:
         on_change=lambda: file_uploader_callback()
     )
 
-    # If there are files in use, show a button to clear files
-    if get_file_list():
-        button1, button2, button3 = st.columns([5, 4, 4])
-        selected_files = get_selected_file_list()
-        button1.button(
-            f"Generate Embeddings",
-            icon="🔍",
-            on_click=lambda: generate_embeddings_callback(),
-            disabled=not bool(selected_files)
-        )
-        button2.button(
-            f"Remove {len(selected_files)} Files", 
-            icon="❌",
-            on_click=lambda: remove_files_callback(),
-            disabled=not bool(selected_files)
-        )
-        with button3:
-            st.button(
-                " Embeddings",
-                icon="🔄",
-                on_click=lambda: reset_embeddings_callback(),
-            )
-            st.button(
-                "Reset All",
-                icon="🔄",
-                on_click=lambda: reset_all_callback(),
-            )
-
-    st.divider()
-    
     #########################
     ### Metrics
     #########################
+    st.divider()
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric(
@@ -337,6 +317,40 @@ with right:
             value=get_total_embeddings(),
             border=True
         )
+
+    #########################
+    ### File Management
+    #########################
+    st.divider()
+
+    # If there are files in use, show a button to clear files
+    if get_file_list():
+        button1, button2 = st.columns([1,1])
+        selected_files = get_selected_file_list()
+        with button1:
+            st.button(
+                f"Remove {len(selected_files)} Files",
+                icon="❌",
+                on_click=lambda: remove_files_callback(),
+                disabled=not bool(selected_files)
+            )
+            st.button(
+                "Reset All",
+                icon="🔄",
+                on_click=lambda: reset_all_callback(),
+            )
+        with button2:
+            st.button(
+                "Process Embeddings",
+                icon="🔍",
+                on_click=lambda: generate_embeddings_callback(),
+                disabled=not bool(selected_files)
+            )
+            st.button(
+                "Reset Embeddings",
+                icon="🔄",
+                on_click=lambda: reset_embeddings_callback(),
+            )
 
     #########################
     ### Settings
